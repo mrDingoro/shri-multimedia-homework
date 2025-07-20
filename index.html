@@ -53,13 +53,358 @@
         'http://localhost:3000/assets/5.mp4',
     ];
 
-    <!-- write your code here -->
+    // Глобальные переменные
+    let currentSlide = 0;
+    let isPlaying = false;
+    let isReactionsOpen = false;
+    let videos = [];
+    let progressBars = [];
+    let slider;
+    let progressContainer;
 
+    // Инициализация DOM элементов
+    function initializeElements() {
+        slider = document.querySelector('.stories');
+        progressContainer = document.querySelector('.progress');
+        // Очистка существующих элементов
+        slider.innerHTML = '';
+        progressContainer.innerHTML = '';
+    }
+
+    // Создание всех слайдов
+    function createAllStories() {
+        videosSrc.forEach((src, index) => {
+            const story = initStory(index, src);
+            videos.push(story.video);
+            progressBars.push(story.progressBar);
+        });
+    }
+
+    // Настройка событий видео
+    function setupVideoEvents(video, index) {
+        video.addEventListener('loadedmetadata', () => {
+            // Убираем автозапуск - пользователь должен кликнуть
+            if (index === 0) {
+                // Показываем кнопку воспроизведения
+                document.querySelector('.stop-screen').classList.remove('stop-screen_playing');
+            }
+        });
+
+
+
+        video.addEventListener('timeupdate', () => {
+            updateProgress(index);
+        });
+
+        video.addEventListener('ended', () => {
+            if (currentSlide < videos.length - 1) {
+                // Автоматический переход к следующему слайду
+                setTimeout(() => {
+                    next();
+                }, 100);
+            } else {
+                // Последний слайд закончился
+                isPlaying = false;
+                document.querySelector('.stop-screen').classList.remove('stop-screen_playing');
+            }
+        });
+
+        // Обработка ошибок
+        video.addEventListener('error', (e) => {
+            console.error('Ошибка загрузки видео:', video.src, e);
+            if (currentSlide < videos.length - 1) {
+                next();
+            }
+        });
+
+
+    }
+
+    // Предзагрузка видео
+    function preloadVideos() {
+        videos.forEach(video => {
+            video.preload = 'metadata';
+        });
+    }
+
+    // Управление воспроизведением
+    function togglePlay() {
+        if (isReactionsOpen) return;
+
+        const currentVideo = videos[currentSlide];
+
+        if (isPlaying) {
+            currentVideo.pause();
+            isPlaying = false;
+            document.querySelector('.stop-screen').classList.remove('stop-screen_playing');
+        } else {
+            // Обработка ошибки автовоспроизведения
+            currentVideo.play().then(() => {
+                isPlaying = true;
+                document.querySelector('.stop-screen').classList.add('stop-screen_playing');
+            }).catch((error) => {
+                console.log('Автовоспроизведение заблокировано браузером. Пользователь должен кликнуть для воспроизведения.');
+                // Показываем кнопку воспроизведения
+                document.querySelector('.stop-screen').classList.remove('stop-screen_playing');
+            });
+        }
+    }
+
+    // Обновление прогресс-бара
+    function updateProgress(slideIndex) {
+        if (slideIndex !== currentSlide) return;
+
+        const video = videos[slideIndex];
+        const progressBar = progressBars[slideIndex];
+
+        if (video.duration && video.currentTime >= 0) {
+            const progress = video.currentTime / video.duration;
+            // Убеждаемся, что переходы включены для плавного обновления
+            progressBar.classList.remove('no-transition');
+            progressBar.style.transform = `scaleX(${progress})`;
+        }
+    }
+
+    // Сброс прогресса при переключении
+    function resetProgressBars() {
+        // Временно отключаем переходы для мгновенного обновления
+        progressBars.forEach(bar => {
+            bar.classList.add('no-transition');
+        });
+
+        progressBars.forEach((bar, index) => {
+            if (index < currentSlide) {
+                // Завершенные слайды - всегда заполнены (100%)
+                bar.style.transform = 'scaleX(1)';
+            } else if (index > currentSlide) {
+                // Будущие слайды - всегда пустые (0%)
+                bar.style.transform = 'scaleX(0)';
+            } else {
+                // Текущий слайд - начинаем с 0%
+                bar.style.transform = 'scaleX(0)';
+            }
+        });
+
+        // Включаем переходы обратно для плавного обновления во время воспроизведения
+        setTimeout(() => {
+            progressBars.forEach(bar => {
+                bar.classList.remove('no-transition');
+            });
+        }, 50);
+    }
+
+
+
+                // Показ слайда (плавное переключение)
+    function showSlide(slideIndex) {
+        const stories = document.querySelectorAll('.stories__story');
+
+        // Сначала скрываем все слайды
+        stories.forEach((story, index) => {
+            if (index !== slideIndex) {
+                story.classList.add('hidden');
+                story.style.opacity = '0';
+            }
+        });
+
+        // Затем показываем нужный слайд
+        const targetStory = stories[slideIndex];
+        if (targetStory) {
+            targetStory.classList.remove('hidden');
+            // Показываем слайд сразу
+            targetStory.style.opacity = '1';
+        }
+    }
+
+            // Переключение слайдов (плавное как в Instagram/Telegram)
+    function switchSlide(newSlide) {
+        // Остановка текущего видео
+        videos[currentSlide].pause();
+
+        // Обновление индекса
+        currentSlide = newSlide;
+
+        // Показываем новый слайд
+        showSlide(currentSlide);
+
+        // Сразу обновляем прогресс
+        resetProgressBars();
+
+        // Сбрасываем время видео и запускаем
+        videos[currentSlide].currentTime = 0;
+
+        // Запуск нового видео
+        if (isPlaying) {
+            videos[currentSlide].play().then(() => {
+                document.querySelector('.stop-screen').classList.add('stop-screen_playing');
+            }).catch((error) => {
+                console.log('Автовоспроизведение заблокировано при переключении слайдов.');
+                isPlaying = false;
+                document.querySelector('.stop-screen').classList.remove('stop-screen_playing');
+            });
+        } else {
+            // Если воспроизведение остановлено, показываем кнопку
+            document.querySelector('.stop-screen').classList.remove('stop-screen_playing');
+        }
+    }
+
+        // Следующий слайд
+    function next() {
+        if (currentSlide < videos.length - 1) {
+            switchSlide(currentSlide + 1);
+        }
+    }
+
+    // Предыдущий слайд
+    function prev() {
+        if (currentSlide > 0) {
+            switchSlide(currentSlide - 1);
+        }
+    }
+
+    // Открытие панели реакций
+    function showReactions() {
+        if (isReactionsOpen) return;
+
+        isReactionsOpen = true;
+        isPlaying = false;
+        videos[currentSlide].pause();
+
+        // Создание оверлея
+        const overlay = document.createElement('div');
+        overlay.className = 'overlay';
+        overlay.onclick = hideReactions;
+
+        // Создание панели реакций
+        const reactions = document.createElement('div');
+        reactions.className = 'reactions';
+        reactions.innerHTML = `
+            <button class="reaction" onclick="addReaction('👍')">👍</button>
+            <button class="reaction" onclick="addReaction('❤️')">❤️</button>
+            <button class="reaction" onclick="addReaction('😊')">😊</button>
+            <button class="reaction" onclick="addReaction('🎉')">🎉</button>
+            <button class="reaction" onclick="addReaction('🔥')">🔥</button>
+        `;
+
+        // Предотвращение всплытия событий для панели реакций
+        reactions.addEventListener('click', (e) => {
+            e.stopPropagation();
+        });
+
+        document.querySelector('.root').appendChild(overlay);
+        document.querySelector('.root').appendChild(reactions);
+    }
+
+    // Скрытие панели реакций
+    function hideReactions() {
+        if (!isReactionsOpen) return;
+
+        isReactionsOpen = false;
+
+        // Удаление оверлея и реакций
+        const overlay = document.querySelector('.overlay');
+        const reactions = document.querySelector('.reactions');
+
+        if (overlay) overlay.remove();
+        if (reactions) reactions.remove();
+
+        // Показываем кнопку паузы (так как видео было на паузе)
+        document.querySelector('.stop-screen').classList.remove('stop-screen_playing');
+    }
+
+    // Добавление реакции
+    function addReaction(emoji) {
+        // Создание летящей реакции
+        const flyingReaction = document.createElement('div');
+        flyingReaction.className = 'flying-reaction';
+        flyingReaction.textContent = emoji;
+        flyingReaction.style.left = Math.random() * 80 + 10 + '%';
+
+        document.querySelector('.root').appendChild(flyingReaction);
+
+        // Удаление после анимации
+        setTimeout(() => {
+            flyingReaction.remove();
+        }, 500);
+
+        // Скрытие панели реакций
+        hideReactions();
+    }
+
+    // Touch события для мобильных
+    function setupTouchEvents() {
+        let startX = 0;
+        let startY = 0;
+
+        document.addEventListener('touchstart', (e) => {
+            startX = e.touches[0].clientX;
+            startY = e.touches[0].clientY;
+        });
+
+        document.addEventListener('touchend', (e) => {
+            const endX = e.changedTouches[0].clientX;
+            const endY = e.changedTouches[0].clientY;
+            const diffX = startX - endX;
+            const diffY = startY - endY;
+
+            // Горизонтальный свайп для навигации
+            if (Math.abs(diffX) > Math.abs(diffY) && Math.abs(diffX) > 50) {
+                if (diffX > 0) {
+                    next();
+                } else {
+                    prev();
+                }
+            }
+        });
+    }
+
+    // Получение элементов истории
+    function getStory(id) {
+        return {
+            video: document.getElementById(`video-${id}`),
+            progressBar: document.getElementById(`progress-${id}`)
+        };
+    }
+
+            // Основная функция инициализации
+    function init() {
+        initializeElements();
+        createAllStories();
+
+        // Настройка событий для каждого видео
+        videos.forEach((video, index) => {
+            setupVideoEvents(video, index);
+        });
+
+        preloadVideos();
+        setupTouchEvents();
+
+        // Инициализация видимости слайдов
+        const stories = document.querySelectorAll('.stories__story');
+        stories.forEach((story, index) => {
+            if (index === 0) {
+                story.classList.remove('hidden');
+                story.style.opacity = '1';
+            } else {
+                story.classList.add('hidden');
+                story.style.opacity = '0';
+            }
+        });
+
+        showSlide(0);
+
+        // Показываем кнопку воспроизведения по умолчанию
+        document.querySelector('.stop-screen').classList.remove('stop-screen_playing');
+    }
+
+    // Инициализация истории
     function initStory(id, src) {
         slider.insertAdjacentHTML(
             'beforeend',
             `<div class="stories__story">
-                <video id="video-${id}" class="stories__video" src="${src}"></video>
+                <video id="video-${id}" class="stories__video" src="${src}" preload="metadata" playsinline>
+                    <p>Ваш браузер не поддерживает видео.</p>
+                </video>
             </div>`,
         );
 
@@ -72,6 +417,14 @@
 
         return getStory(id);
     }
+
+    // Запуск при загрузке страницы
+    document.addEventListener('DOMContentLoaded', init);
+
+    // Привязка кнопки реакций
+    document.addEventListener('DOMContentLoaded', () => {
+        document.querySelector('.show-reactions-btn').addEventListener('click', showReactions);
+    });
 </script>
 </body>
 
